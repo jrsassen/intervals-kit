@@ -190,3 +190,41 @@ class TestAthleteCurves:
         with patch.object(svc._client, "get", new=mock):
             await svc.get_athlete_power_curves("2024-01-01", "2024-12-31")
         assert "activity-power-curves" in mock.call_args[0][0]
+
+
+class TestDownloadActivitiesCsv:
+    async def test_uses_json_endpoint_not_csv_endpoint(
+        self, svc: IntervalsService, sample_activities: list[dict], tmp_path: Path
+    ) -> None:
+        """Must use /activities (supports date filtering), NOT /activities.csv (no params)."""
+        mock = AsyncMock(return_value=sample_activities)
+        with patch.object(svc._client, "get", new=mock):
+            await svc.download_activities_csv("2024-01-01", "2024-12-31", tmp_path)
+        called_path = mock.call_args[0][0]
+        assert called_path.endswith("/activities")
+        assert ".csv" not in called_path
+
+    async def test_passes_date_params(
+        self, svc: IntervalsService, sample_activities: list[dict], tmp_path: Path
+    ) -> None:
+        mock = AsyncMock(return_value=sample_activities)
+        with patch.object(svc._client, "get", new=mock):
+            await svc.download_activities_csv("2024-01-01", "2024-12-31", tmp_path)
+        params = mock.call_args[1]["params"]
+        assert params["oldest"] == "2024-01-01"
+        assert params["newest"] == "2024-12-31"
+
+    async def test_writes_csv_file(
+        self, svc: IntervalsService, sample_activities: list[dict], tmp_path: Path
+    ) -> None:
+        with patch.object(svc._client, "get", new=AsyncMock(return_value=sample_activities)):
+            result = await svc.download_activities_csv("2024-01-01", "2024-12-31", tmp_path)
+        assert result.path.exists()
+        assert result.path.suffix == ".csv"
+        content = result.path.read_text()
+        assert "Morning Ride" in content
+        assert "Easy Run" in content
+        # Header row must be present
+        first_line = content.splitlines()[0]
+        assert "id" in first_line
+        assert "name" in first_line

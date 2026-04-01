@@ -11,6 +11,7 @@ from typing import Any
 
 from .client import IntervalsClient
 from .config import ApiConfig
+from .exporters import write_csv
 from .models import Activity, ActivitySearchResult, FileDownloadResult
 
 
@@ -186,11 +187,23 @@ class IntervalsService:
         newest: str,
         output_dir: Path,
     ) -> FileDownloadResult:
-        """Download all activities in a date range as a CSV file."""
-        return await self._client.download_file(
-            f"/api/v1/athlete/{self._athlete_id}/activities.csv",
-            dest_dir=Path(output_dir),
-            params={"oldest": oldest, "newest": newest},
+        """Download activities for a date range as a CSV file.
+
+        Uses the JSON activities endpoint (which supports date filtering) and
+        writes the result to CSV locally. The /activities.csv API endpoint does
+        not accept date range parameters and would return all activities.
+        """
+        output_dir = Path(output_dir)
+        activities = await self.list_activities(oldest, newest, limit=10000)
+        rows = [a.model_dump(exclude_none=True) for a in activities]
+        path = output_dir / f"{self._athlete_id}_activities.csv"
+        write_csv(rows, path)
+        size = path.stat().st_size
+        return FileDownloadResult(
+            path=path,
+            size_bytes=size,
+            content_type="text/csv",
+            filename=path.name,
         )
 
     # ------------------------------------------------------------------

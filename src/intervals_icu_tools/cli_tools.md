@@ -30,7 +30,9 @@ athlete_id = "your_athlete_id"
 
 ## Global Options
 
-- `-o / --output-dir <dir>`: Directory to save output files (default: `.` = stdout)
+- `-o / --output-dir <path>`: Directory **or full file path** to save output (default: `.` = stdout).
+  - Directory: `uv run intervals-icu-tools -o ./data list-activities …` → saves to `./data/activities_<dates>.json`
+  - File path: `uv run intervals-icu-tools -o ./data/my_activities.json list-activities …` → saves to exactly that path
 - `-f / --format json|csv`: Output format for saved files (default: `json`)
 
 **IMPORTANT**: Global options must come **before** the subcommand name:

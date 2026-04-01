@@ -11,7 +11,7 @@ from ..config import load_config
     "-o",
     default=".",
     show_default=True,
-    help="Directory to save output files.",
+    help="Directory to save output files, or a full file path to set the filename too.",
 )
 @click.option(
     "--format",

@@ -42,15 +42,24 @@ def _handle(e: Exception) -> None:
     _exit(str(e), 1)
 
 
+def _resolve_output(ctx: click.Context, default_filename: str) -> Path | None:
+    """Return the output Path, or None to indicate stdout."""
+    output_dir = ctx.obj.get("output_dir", ".")
+    if output_dir == ".":
+        return None
+    p = Path(output_dir)
+    # If the path has a file extension, treat it as a full file path.
+    return p if p.suffix else p / default_filename
+
+
 def _output(data: object, ctx: click.Context, filename: str) -> None:
     """Print JSON to stdout or save to file depending on --output-dir."""
-    output_dir = ctx.obj.get("output_dir", ".")
-    if output_dir != ".":
-        path = Path(output_dir) / filename
+    path = _resolve_output(ctx, filename)
+    if path is None:
+        click.echo(to_json_str(data))
+    else:
         write_json(data, path)
         click.echo(f"Saved to {path}")
-    else:
-        click.echo(to_json_str(data))
 
 
 # ------------------------------------------------------------------
@@ -267,11 +276,13 @@ def download_activity_file(ctx: click.Context, activity_id: str, file_type: str)
     """
     svc = IntervalsService(ctx.obj["config"])
     try:
-        result = asyncio.run(
-            svc.download_activity_file(
-                activity_id, file_type, Path(ctx.obj["output_dir"])
-            )
-        )
+        # Determine desired output path; suffix present → full file path override.
+        out = _resolve_output(ctx, "")
+        dest_dir = out.parent if (out is not None and out.suffix) else Path(ctx.obj["output_dir"])
+        result = asyncio.run(svc.download_activity_file(activity_id, file_type, dest_dir))
+        if out is not None and out.suffix and result.path != out:
+            result.path.rename(out)
+            result = result.model_copy(update={"path": out, "filename": out.name})
         click.echo(f"Downloaded: {result.path}")
         click.echo(f"Size: {result.size_bytes:,} bytes ({result.content_type})")
     except Exception as e:
@@ -289,9 +300,12 @@ def download_activities_csv(ctx: click.Context, oldest: str, newest: str) -> Non
     """
     svc = IntervalsService(ctx.obj["config"])
     try:
-        result = asyncio.run(
-            svc.download_activities_csv(oldest, newest, Path(ctx.obj["output_dir"]))
-        )
+        out = _resolve_output(ctx, "")
+        dest_dir = out.parent if (out is not None and out.suffix) else Path(ctx.obj["output_dir"])
+        result = asyncio.run(svc.download_activities_csv(oldest, newest, dest_dir))
+        if out is not None and out.suffix and result.path != out:
+            result.path.rename(out)
+            result = result.model_copy(update={"path": out, "filename": out.name})
         click.echo(f"Downloaded: {result.path}")
         click.echo(f"Size: {result.size_bytes:,} bytes ({result.content_type})")
     except Exception as e:

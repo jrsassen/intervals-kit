@@ -9,8 +9,8 @@ A Python package providing an MCP server and CLI for the Intervals.ICU REST API.
 ## Commands
 
 ```bash
-# Setup (first time) — use pip install -e, not uv sync (editable install required)
-uv pip install -e .
+# Setup (first time)
+uv sync
 
 # Run MCP server
 uv run intervals-icu-mcp

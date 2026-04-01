@@ -118,6 +118,8 @@ Phase 2: Core Layer (no MCP/CLI dependency)
 Phase 3: MCP Server
 ────────────────────
 13. Create src/myapi_tools/mcp_server.py
+    Must include: FastMCP(instructions=...) with _CLI_INVOCATION, and
+    mcp.add_resource(FileResource(uri="docs://cli-tools", path=.../cli_tools.md))
     (verify: uv run myapi-tools-mcp &   → should start and listen on stdio
      kill %1)
 
@@ -540,11 +542,49 @@ Thin wrapper that registers FastMCP tools. Each tool is a few lines that call th
 layer and format the response for the LLM context window.
 
 ```python
+from pathlib import Path
 from fastmcp import FastMCP
+from fastmcp.resources import FileResource
 from .config import load_config
 from .service import MyAPIService
 
-mcp = FastMCP("myapi-tools")
+# Derive the project root from this file's location so the CLI invocation
+# is always correct regardless of where the package is installed.
+_PROJECT_DIR = Path(__file__).parent.parent.parent  # src/myapi_tools/ → src/ → project root
+_CLI_INVOCATION = f"uv run --directory {_PROJECT_DIR} myapi-tools"
+
+mcp = FastMCP(
+    "myapi-tools",
+    instructions=f"""This MCP server provides tools to query the MyAPI REST API.
+
+## CLI companion
+
+For large data (bulk datasets, binary files, long-running exports) the tools will
+instruct you to use the CLI instead. Invoke it as:
+
+    {_CLI_INVOCATION} <command> [options]
+
+Full CLI reference is available as an MCP resource:
+    Resource URI: docs://cli-tools
+
+## Key patterns
+- Use MCP tools for small structured data that fits in the LLM context (<50KB).
+- Use the CLI for bulk/binary data — it streams directly to disk.
+- Always pass dates as ISO 8601 strings: "YYYY-MM-DD".
+""",
+)
+
+# Expose the CLI reference as a resource through the same MCP connection.
+# No separate config entry needed — the LLM can read it via docs://cli-tools.
+mcp.add_resource(
+    FileResource(
+        uri="docs://cli-tools",
+        path=Path(__file__).parent / "cli_tools.md",
+        name="CLI Tool Reference",
+        description="Full reference for the myapi-tools CLI: commands, options, exit codes, and usage patterns.",
+        mime_type="text/markdown",
+    )
+)
 
 @mcp.tool
 async def list_items(category: str, limit: int = 20) -> list[dict]:
@@ -643,6 +683,16 @@ to the LLM agent, not just documentation for humans.
 - **Docstrings are the tool descriptions**: FastMCP extracts them for the LLM. Write
   them as if you're explaining to an LLM what the tool does and when to use it.
 - **No file I/O in MCP tools**: If the user needs bulk data, point them to the CLI.
+- **Server `instructions=`**: Always set the `instructions` parameter on `FastMCP(...)`.
+  It is sent to the LLM on every connection (MCP `initialize` response) and should
+  contain the exact `uv run --directory <path>` CLI invocation. Derive `<path>` from
+  `Path(__file__).parent.parent.parent` so it is always correct regardless of install
+  location. Without this, the LLM will not know how to call the CLI companion.
+- **`cli_tools.md` as an MCP resource**: Register `cli_tools.md` as a `FileResource`
+  with URI `docs://cli-tools` via `mcp.add_resource(FileResource(...))`. This exposes
+  the full CLI reference through the same MCP connection — no separate tool, config
+  entry, or CLAUDE.md include is needed. The `instructions` text should reference this
+  URI so the LLM knows to read it.
 
 ### Error Handling Patterns
 

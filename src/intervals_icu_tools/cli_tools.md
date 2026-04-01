@@ -4,10 +4,15 @@ Command-line interface for the Intervals.ICU fitness tracking API.
 
 ## Installation / Running
 
-No install needed — run directly from the project:
+The MCP server `instructions` field contains the exact invocation for the current
+installation. Use it as-is for all CLI calls. The general form is:
+
 ```bash
-uv run intervals-icu-tools <command>
+uv run --directory <project_dir> intervals-icu-tools <command>
 ```
+
+Where `<project_dir>` is the absolute path to the cloned repository
+(the directory containing `pyproject.toml`).
 
 ## Authentication
 

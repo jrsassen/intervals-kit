@@ -7,13 +7,56 @@ so the LLM can reason about failures and recover gracefully.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastmcp import FastMCP
+from fastmcp.resources import FileResource
 
 from .config import load_config
 from .errors import AuthenticationError, IntervalsError, NotFoundError, RateLimitError
 from .service import IntervalsService
 
-mcp = FastMCP("intervals-icu-tools")
+# Project root derived from this file's location:
+# src/intervals_icu_tools/mcp_server.py → src/intervals_icu_tools/ → src/ → project root
+_PROJECT_DIR = Path(__file__).parent.parent.parent
+
+_CLI_INVOCATION = f"uv run --directory {_PROJECT_DIR} intervals-icu-tools"
+
+mcp = FastMCP(
+    "intervals-icu-tools",
+    instructions=f"""This MCP server provides tools to query Intervals.ICU training data.
+
+## CLI companion
+
+For large data (streams from activities longer than ~1 hour, bulk CSV exports, binary
+file downloads) the tools will tell you to use the CLI instead of returning the data
+directly. Invoke the CLI with:
+
+    {_CLI_INVOCATION} <command> [options]
+
+Full CLI reference is available as an MCP resource — read it with:
+    Resource URI: docs://cli-tools
+
+## Key patterns
+- Use `list_activities` / `get_activity` for structured training data in context.
+- Use `get_activity_streams` for short activities; fall back to the CLI for long ones.
+- Use `get_power_curve` / `get_hr_curve` for performance analysis.
+- Use `get_athlete_power_curves` to compare fitness across a training block.
+- Always pass dates as ISO 8601 strings: "YYYY-MM-DD".
+""",
+)
+
+# Expose the CLI reference documentation as an MCP resource so the LLM can read it
+# through the same MCP connection — no separate configuration needed.
+mcp.add_resource(
+    FileResource(
+        uri="docs://cli-tools",
+        path=Path(__file__).parent / "cli_tools.md",
+        name="CLI Tool Reference",
+        description="Full reference for the intervals-icu-tools CLI: commands, options, exit codes, and usage patterns.",
+        mime_type="text/markdown",
+    )
+)
 
 
 def _make_service() -> IntervalsService:

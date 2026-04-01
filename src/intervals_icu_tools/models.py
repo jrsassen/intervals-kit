@@ -65,3 +65,98 @@ class FileDownloadResult(BaseModel):
     size_bytes: int
     content_type: str
     filename: str
+
+
+class Athlete(BaseModel):
+    """Athlete profile. extra='allow' passes through all 154+ API fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str | None = None
+    firstname: str | None = None
+    lastname: str | None = None
+    email: str | None = None
+    sex: str | None = None
+    weight: float | None = None
+    icu_resting_hr: int | None = None
+    icu_weight: float | None = None
+    icu_ftp: int | None = None
+    timezone: str | None = None
+    measurement_preference: str | None = None
+
+
+class WellnessRecord(BaseModel):
+    """A single day's wellness data. extra='allow' passes through all 46 fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str  # ISO-8601 date, e.g. "2024-01-15"
+    ctl: float | None = None
+    atl: float | None = None
+    weight: float | None = None
+    restingHR: int | None = None
+    hrv: float | None = None
+    hrvSDNN: float | None = None
+    sleepSecs: int | None = None
+    sleepScore: float | None = None
+    sleepQuality: int | None = None
+    soreness: int | None = None
+    fatigue: int | None = None
+    stress: int | None = None
+    mood: int | None = None
+    motivation: int | None = None
+    injury: int | None = None
+    updated: str | None = None
+
+
+class Event(BaseModel):
+    """A calendar event (planned workout, race, note, etc.). extra='allow' for all 60+ fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int | None = None
+    athlete_id: str | None = None
+    name: str | None = None
+    description: str | None = None
+    start_date_local: str | None = None
+    end_date_local: str | None = None
+    category: str | None = None  # WORKOUT, RACE_A/B/C, NOTE, PLAN, etc.
+    type: str | None = None
+    indoor: bool | None = None
+    color: str | None = None
+    moving_time: int | None = None
+    icu_training_load: int | None = None
+    icu_atl: float | None = None
+    icu_ctl: float | None = None
+
+
+class Workout(BaseModel):
+    """A workout in the athlete's library. extra='allow' for all 28 fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int | None = None
+    athlete_id: str | None = None
+    name: str | None = None
+    description: str | None = None
+    type: str | None = None
+    indoor: bool | None = None
+    color: str | None = None
+    moving_time: int | None = None
+    icu_training_load: int | None = None
+    folder_id: int | None = None
+    tags: list[str] | None = None
+    updated: str | None = None
+
+
+class ActivityMessage(BaseModel):
+    """A comment on an activity."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int | None = None
+    content: str | None = None
+    athlete_id: str | None = None
+    athlete_name: str | None = None
+    updated: str | None = None

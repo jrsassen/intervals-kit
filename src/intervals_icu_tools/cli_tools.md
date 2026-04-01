@@ -195,6 +195,155 @@ Get best pace curves across all activities in a date range.
 uv run intervals-icu-tools [-o ./data] get-athlete-pace-curves --oldest 2024-01-01 --newest 2024-12-31
 ```
 
+### get-athlete
+Get the athlete's profile (FTP, thresholds, sport settings, preferences).
+
+```
+uv run intervals-icu-tools [-o ./data] get-athlete
+```
+
+Output: Full athlete JSON with id, name, weight, icu_ftp, icu_resting_hr, timezone, measurement_preference, and all other profile fields.
+
+### update-athlete
+Update athlete profile fields.
+
+```
+uv run intervals-icu-tools update-athlete --fields '{"weight": 70.5, "timezone": "Europe/Berlin"}'
+```
+
+Options:
+- `--fields / -j`: JSON object of fields to update. Common fields: name, weight (kg), sex ("M"/"F"), measurement_preference ("metric"/"imperial"), fahrenheit (bool), timezone.
+
+### list-wellness
+List wellness records for a date range.
+
+```
+uv run intervals-icu-tools [-o ./data] list-wellness --oldest 2024-01-01 --newest 2024-12-31
+```
+
+Output: Array of wellness records with id (date), ctl, atl, weight, restingHR, hrv, sleepSecs, sleepScore, fatigue, stress, mood, motivation.
+
+### get-wellness
+Get the wellness record for a specific date.
+
+```
+uv run intervals-icu-tools get-wellness 2024-01-15
+```
+
+Output: Single wellness record JSON.
+
+### update-wellness
+Update (or create) the wellness record for a specific date.
+
+```
+uv run intervals-icu-tools update-wellness 2024-01-15 --fields '{"weight": 70.2, "sleepSecs": 28800, "fatigue": 3}'
+```
+
+Options:
+- `--fields / -j` (required): JSON object of wellness fields. Common: weight (kg), restingHR (bpm), hrv (ms), sleepSecs (seconds), sleepScore (0–100), sleepQuality (1–5), fatigue (1–7), stress (1–7), mood (1–7), motivation (1–7), soreness (1–7).
+
+### list-events
+List calendar events (planned workouts, races, notes) for a date range.
+
+```
+uv run intervals-icu-tools [-o ./data] list-events --oldest 2024-01-01 --newest 2024-12-31 [--category WORKOUT,RACE_A]
+```
+
+Options:
+- `--category`: Filter by comma-separated categories: WORKOUT, RACE_A, RACE_B, RACE_C, NOTE
+- `--limit / -l`: Max events to return
+
+Output: Array of event objects with id, name, category, start_date_local, type, moving_time, icu_training_load, description.
+
+### get-event
+Get a single calendar event by ID.
+
+```
+uv run intervals-icu-tools get-event <event_id>
+```
+
+### create-event
+Create a calendar event (planned workout, note, race, etc.).
+
+```
+uv run intervals-icu-tools create-event --fields '{"name": "Long Run", "category": "WORKOUT", "start_date_local": "2024-03-15T09:00:00", "type": "Run", "moving_time": 5400}'
+```
+
+Options:
+- `--fields / -j` (required): JSON object. Common fields: name, category (WORKOUT/NOTE/RACE_A/RACE_B/RACE_C), start_date_local (ISO 8601 datetime), type (Run/Ride/Swim/etc.), description, moving_time (seconds), indoor (bool).
+
+### update-event
+Update a calendar event. Only provided fields are changed.
+
+```
+uv run intervals-icu-tools update-event <event_id> --fields '{"name": "Recovery Ride", "moving_time": 3600}'
+```
+
+### delete-event
+Delete a calendar event.
+
+```
+uv run intervals-icu-tools delete-event <event_id>
+```
+
+### list-workouts
+List all workouts in the athlete's library.
+
+```
+uv run intervals-icu-tools [-o ./data] list-workouts
+```
+
+Output: Array of workout objects with id, name, type, moving_time, icu_training_load, folder_id, tags.
+
+### get-workout
+Get a single workout from the library.
+
+```
+uv run intervals-icu-tools get-workout <workout_id>
+```
+
+Output: Full workout JSON including workout_doc (structured steps).
+
+### create-workout
+Create a new workout in the athlete's library.
+
+```
+uv run intervals-icu-tools create-workout --fields '{"name": "Tempo Run", "type": "Run", "moving_time": 3600}'
+```
+
+Options:
+- `--fields / -j` (required): JSON object. Common fields: name (required), type (Run/Ride/Swim/etc.), description, moving_time (seconds), indoor (bool), folder_id (int), tags (list of strings), workout_doc (structured steps).
+
+### update-workout
+Update a workout in the library.
+
+```
+uv run intervals-icu-tools update-workout <workout_id> --fields '{"name": "Updated Name"}'
+```
+
+### delete-workout
+Delete a workout from the library.
+
+```
+uv run intervals-icu-tools delete-workout <workout_id>
+```
+
+### list-messages
+List all comments on an activity.
+
+```
+uv run intervals-icu-tools [-o ./data] list-messages <activity_id>
+```
+
+Output: Array of message objects with id, content, athlete_id, athlete_name, updated.
+
+### create-message
+Post a comment on an activity.
+
+```
+uv run intervals-icu-tools create-message <activity_id> "Great workout!"
+```
+
 ## Exit Codes
 
 | Code | Meaning |

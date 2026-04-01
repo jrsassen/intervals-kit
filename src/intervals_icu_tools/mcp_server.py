@@ -45,7 +45,11 @@ Full CLI reference is available as an MCP resource — read it with:
 - Use `get_activity_streams` for short activities; fall back to the CLI for long ones.
 - Use `get_power_curve` / `get_hr_curve` for performance analysis.
 - Use `get_athlete_power_curves` to compare fitness across a training block.
+- Use `list_wellness` / `update_wellness` for daily biometric and subjective load tracking.
+- Use `list_events` / `create_event` to read and plan the training calendar.
+- Use `list_workouts` / `create_workout` to manage the workout library.
 - Always pass dates as ISO 8601 strings: "YYYY-MM-DD".
+- For tools that accept a `fields` parameter, pass a JSON string, e.g. '{{"weight": 70.5}}'.
 """,
 )
 
@@ -382,6 +386,379 @@ async def get_athlete_hr_curves(oldest: str, newest: str) -> dict:
     try:
         svc = _make_service()
         return await svc.get_athlete_hr_curves(oldest, newest)
+    except Exception as e:
+        return _err(e)
+
+
+# ------------------------------------------------------------------
+# Athlete profile
+# ------------------------------------------------------------------
+
+
+@mcp.tool
+async def get_athlete() -> dict:
+    """Get the athlete's profile, including sport settings and thresholds.
+
+    Returns:
+        Dict with athlete fields: id, name, weight, icu_ftp, icu_resting_hr,
+        timezone, measurement_preference, and all other profile fields.
+    """
+    try:
+        svc = _make_service()
+        athlete = await svc.get_athlete()
+        return athlete.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def update_athlete(fields: str) -> dict:
+    """Update athlete profile fields. Only provided fields are changed.
+
+    Args:
+        fields: JSON object of fields to update. Common fields:
+            name (str), weight (float, kg), sex ("M"/"F"),
+            measurement_preference ("metric"/"imperial"),
+            fahrenheit (bool), timezone (e.g. "Europe/London").
+            Example: '{"weight": 70.5, "timezone": "Europe/Berlin"}'
+
+    Returns:
+        Updated athlete dict with all profile fields.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        athlete = await svc.update_athlete(**_json.loads(fields))
+        return athlete.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+# ------------------------------------------------------------------
+# Wellness
+# ------------------------------------------------------------------
+
+
+@mcp.tool
+async def list_wellness(oldest: str, newest: str) -> list[dict] | dict:
+    """List wellness records for a date range.
+
+    Args:
+        oldest: Start date ISO 8601 (e.g. "2024-01-01")
+        newest: End date ISO 8601 (e.g. "2024-12-31")
+
+    Returns:
+        List of wellness dicts. Each has date (id), ctl, atl, weight, restingHR,
+        hrv, sleepSecs, sleepScore, fatigue, stress, mood, motivation, and more.
+    """
+    try:
+        svc = _make_service()
+        records = await svc.list_wellness(oldest, newest)
+        return [r.model_dump(exclude_none=True) for r in records]
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def get_wellness(date: str) -> dict:
+    """Get the wellness record for a specific date.
+
+    Args:
+        date: ISO 8601 date string (e.g. "2024-01-15")
+
+    Returns:
+        Wellness dict with all tracked metrics for that day.
+    """
+    try:
+        svc = _make_service()
+        record = await svc.get_wellness(date)
+        return record.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def update_wellness(date: str, fields: str) -> dict:
+    """Update (or create) the wellness record for a specific date.
+
+    Args:
+        date: ISO 8601 date string (e.g. "2024-01-15")
+        fields: JSON object of wellness metrics to set. Common fields:
+            weight (float, kg), restingHR (int, bpm), hrv (float, ms),
+            sleepSecs (int, seconds), sleepScore (float, 0-100),
+            sleepQuality (int, 1-5), fatigue (int, 1-7), stress (int, 1-7),
+            mood (int, 1-7), motivation (int, 1-7), soreness (int, 1-7).
+            Example: '{"weight": 70.2, "sleepSecs": 28800, "fatigue": 3}'
+
+    Returns:
+        Updated wellness dict for that date.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        record = await svc.update_wellness(date, **_json.loads(fields))
+        return record.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+# ------------------------------------------------------------------
+# Events / Calendar
+# ------------------------------------------------------------------
+
+
+@mcp.tool
+async def list_events(
+    oldest: str,
+    newest: str,
+    category: str | None = None,
+    limit: int | None = None,
+) -> list[dict] | dict:
+    """List calendar events (planned workouts, races, notes) for a date range.
+
+    Args:
+        oldest: Start date ISO 8601 (e.g. "2024-01-01")
+        newest: End date ISO 8601 (e.g. "2024-12-31")
+        category: Comma-separated categories to filter. Options: WORKOUT, RACE_A,
+                  RACE_B, RACE_C, NOTE. Default: all categories.
+        limit: Maximum number of events to return.
+
+    Returns:
+        List of event dicts with id, name, category, start_date_local, type,
+        moving_time, icu_training_load, description, and more.
+    """
+    try:
+        svc = _make_service()
+        events = await svc.list_events(oldest, newest, category=category, limit=limit)
+        return [e.model_dump(exclude_none=True) for e in events]
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def get_event(event_id: int) -> dict:
+    """Get a single calendar event by its ID.
+
+    Args:
+        event_id: The event ID (integer)
+
+    Returns:
+        Full event dict with all fields.
+    """
+    try:
+        svc = _make_service()
+        event = await svc.get_event(event_id)
+        return event.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def create_event(fields: str) -> dict:
+    """Create a calendar event (planned workout, note, race, etc.).
+
+    Args:
+        fields: JSON object of event fields. Common fields:
+            name (str), category (WORKOUT/NOTE/RACE_A/RACE_B/RACE_C),
+            start_date_local (ISO 8601, e.g. "2024-03-15T09:00:00"),
+            type (Run/Ride/Swim/etc.), description (str),
+            moving_time (int, seconds), indoor (bool).
+            Example: '{"name": "Long Run", "category": "WORKOUT",
+                       "start_date_local": "2024-03-15T09:00:00",
+                       "type": "Run", "moving_time": 5400}'
+
+    Returns:
+        Created event dict with all fields including the assigned id.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        event = await svc.create_event(**_json.loads(fields))
+        return event.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def update_event(event_id: int, fields: str) -> dict:
+    """Update a calendar event. Only provided fields are changed.
+
+    Args:
+        event_id: The event ID to update
+        fields: JSON object of fields to update. Common fields:
+            name, description, start_date_local, category, type,
+            moving_time (seconds), indoor (bool), color (hex string).
+            Example: '{"name": "Recovery Ride", "moving_time": 3600}'
+
+    Returns:
+        Updated event dict with all fields.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        event = await svc.update_event(event_id, **_json.loads(fields))
+        return event.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def delete_event(event_id: int) -> dict:
+    """Delete a calendar event.
+
+    Args:
+        event_id: The event ID to delete
+
+    Returns:
+        Empty dict on success, or error dict on failure.
+    """
+    try:
+        svc = _make_service()
+        return await svc.delete_event(event_id)
+    except Exception as e:
+        return _err(e)
+
+
+# ------------------------------------------------------------------
+# Workouts library
+# ------------------------------------------------------------------
+
+
+@mcp.tool
+async def list_workouts() -> list[dict] | dict:
+    """List all workouts in the athlete's workout library.
+
+    Returns:
+        List of workout dicts with id, name, type, moving_time,
+        icu_training_load, folder_id, tags, and more.
+    """
+    try:
+        svc = _make_service()
+        workouts = await svc.list_workouts()
+        return [w.model_dump(exclude_none=True) for w in workouts]
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def get_workout(workout_id: int) -> dict:
+    """Get a single workout from the library by its ID.
+
+    Args:
+        workout_id: The workout ID (integer)
+
+    Returns:
+        Full workout dict including workout_doc (structured workout steps).
+    """
+    try:
+        svc = _make_service()
+        workout = await svc.get_workout(workout_id)
+        return workout.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def create_workout(fields: str) -> dict:
+    """Create a new workout in the athlete's library.
+
+    Args:
+        fields: JSON object of workout fields. Common fields:
+            name (str, required), type (Run/Ride/Swim/etc.),
+            description (str), moving_time (int, seconds), indoor (bool),
+            folder_id (int), tags (list of strings),
+            workout_doc (structured steps object).
+            Example: '{"name": "Tempo Run", "type": "Run", "moving_time": 3600}'
+
+    Returns:
+        Created workout dict with assigned id and all fields.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        workout = await svc.create_workout(**_json.loads(fields))
+        return workout.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def update_workout(workout_id: int, fields: str) -> dict:
+    """Update a workout in the library. Only provided fields are changed.
+
+    Args:
+        workout_id: The workout ID to update
+        fields: JSON object of fields to update (name, description, type,
+                moving_time, indoor, tags, workout_doc, etc.).
+                Example: '{"name": "Updated Tempo Run", "moving_time": 4500}'
+
+    Returns:
+        Updated workout dict with all fields.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        workout = await svc.update_workout(workout_id, **_json.loads(fields))
+        return workout.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def delete_workout(workout_id: int) -> dict:
+    """Delete a workout from the library.
+
+    Args:
+        workout_id: The workout ID to delete
+
+    Returns:
+        Empty dict on success, or error dict on failure.
+    """
+    try:
+        svc = _make_service()
+        return await svc.delete_workout(workout_id)
+    except Exception as e:
+        return _err(e)
+
+
+# ------------------------------------------------------------------
+# Activity messages (comments)
+# ------------------------------------------------------------------
+
+
+@mcp.tool
+async def list_activity_messages(activity_id: str) -> list[dict] | dict:
+    """List all comments on an activity.
+
+    Args:
+        activity_id: The activity ID
+
+    Returns:
+        List of message dicts with id, content, athlete_id, athlete_name, updated.
+    """
+    try:
+        svc = _make_service()
+        messages = await svc.list_activity_messages(activity_id)
+        return [m.model_dump(exclude_none=True) for m in messages]
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool
+async def create_activity_message(activity_id: str, content: str) -> dict:
+    """Post a comment on an activity.
+
+    Args:
+        activity_id: The activity ID to comment on
+        content: The message text
+
+    Returns:
+        Created message dict with id, content, athlete_id, athlete_name, updated.
+    """
+    try:
+        svc = _make_service()
+        message = await svc.create_activity_message(activity_id, content)
+        return message.model_dump(exclude_none=True)
     except Exception as e:
         return _err(e)
 

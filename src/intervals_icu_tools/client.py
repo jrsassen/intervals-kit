@@ -44,6 +44,22 @@ class IntervalsClient:
             self._raise_for_status(response)
             return response.json()
 
+    async def post(self, path: str, json: dict[str, Any] | None = None) -> Any:
+        """Perform a POST request and return the parsed JSON response."""
+        async with self._make_client() as client:
+            response = await client.post(path, json=json)
+            self._raise_for_status(response)
+            return response.json()
+
+    async def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        """Perform a DELETE request and return the parsed JSON response (if any)."""
+        async with self._make_client() as client:
+            response = await client.delete(path, params=params)
+            self._raise_for_status(response)
+            if response.status_code == 204 or not response.content:
+                return {}
+            return response.json()
+
     async def download_file(
         self,
         path: str,

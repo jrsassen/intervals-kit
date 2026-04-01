@@ -16,11 +16,14 @@ from .config import load_config
 from .errors import AuthenticationError, IntervalsError, NotFoundError, RateLimitError
 from .service import IntervalsService
 
-# Project root derived from this file's location:
-# src/intervals_icu_tools/mcp_server.py → src/intervals_icu_tools/ → src/ → project root
-_PROJECT_DIR = Path(__file__).parent.parent.parent
-
-_CLI_INVOCATION = f"uv run --directory {_PROJECT_DIR} intervals-icu-tools"
+# Detect whether running from a source tree (editable/local install) or a PyPI/uvx install.
+# pyproject.toml exists at the project root only in a source tree.
+_project_root = Path(__file__).parent.parent.parent
+_CLI_INVOCATION = (
+    f"uv run --directory {_project_root} intervals-icu-tools"
+    if (_project_root / "pyproject.toml").exists()
+    else "uvx intervals-icu-tools"
+)
 
 mcp = FastMCP(
     "intervals-icu-tools",

@@ -548,10 +548,14 @@ from fastmcp.resources import FileResource
 from .config import load_config
 from .service import MyAPIService
 
-# Derive the project root from this file's location so the CLI invocation
-# is always correct regardless of where the package is installed.
-_PROJECT_DIR = Path(__file__).parent.parent.parent  # src/myapi_tools/ → src/ → project root
-_CLI_INVOCATION = f"uv run --directory {_PROJECT_DIR} myapi-tools"
+# Detect whether running from a source tree (editable/local install) or a PyPI/uvx install.
+# pyproject.toml exists at the project root only in a source tree.
+_project_root = Path(__file__).parent.parent.parent  # src/myapi_tools/ → src/ → project root
+_CLI_INVOCATION = (
+    f"uv run --directory {_project_root} myapi-tools"
+    if (_project_root / "pyproject.toml").exists()
+    else "uvx myapi-tools"
+)
 
 mcp = FastMCP(
     "myapi-tools",
@@ -685,9 +689,11 @@ to the LLM agent, not just documentation for humans.
 - **No file I/O in MCP tools**: If the user needs bulk data, point them to the CLI.
 - **Server `instructions=`**: Always set the `instructions` parameter on `FastMCP(...)`.
   It is sent to the LLM on every connection (MCP `initialize` response) and should
-  contain the exact `uv run --directory <path>` CLI invocation. Derive `<path>` from
-  `Path(__file__).parent.parent.parent` so it is always correct regardless of install
-  location. Without this, the LLM will not know how to call the CLI companion.
+  contain the correct CLI invocation. Detect the install context at module load time:
+  if `pyproject.toml` exists at `Path(__file__).parent.parent.parent` the package is
+  running from a source tree and needs `uv run --directory <root>`; otherwise it was
+  installed via PyPI/uvx and the invocation is simply `uvx myapi-tools`. Without this,
+  the LLM will not know how to call the CLI companion.
 - **`cli_tools.md` as an MCP resource**: Register `cli_tools.md` as a `FileResource`
   with URI `docs://cli-tools` via `mcp.add_resource(FileResource(...))`. This exposes
   the full CLI reference through the same MCP connection — no separate tool, config

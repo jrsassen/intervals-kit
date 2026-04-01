@@ -100,7 +100,7 @@ async def list_activities(oldest: str, newest: str, limit: int = 50) -> list[dic
         distance, moving_time, icu_training_load, icu_ftp, and all other activity fields.
 
     For a bulk CSV export of all activities, use the CLI instead:
-        intervals-icu-tools download-activities-csv --oldest 2024-01-01 --newest 2024-12-31 -o ./data
+        intervals-icu-tools -o ./data download-activities-csv --oldest 2024-01-01 --newest 2024-12-31
     """
     try:
         svc = _make_service()
@@ -226,7 +226,7 @@ async def get_activity_streams(activity_id: str, types: str | None = None) -> li
 
     WARNING: For activities longer than 1 hour, streams can exceed 50KB.
     To save streams to disk for large activities, use the CLI:
-        intervals-icu-tools get-streams <activity_id> --types watts,heartrate -o ./data
+        intervals-icu-tools -o ./data get-streams <activity_id> --types watts,heartrate
     """
     try:
         svc = _make_service()

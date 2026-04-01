@@ -33,13 +33,20 @@ athlete_id = "your_athlete_id"
 - `-o / --output-dir <dir>`: Directory to save output files (default: `.` = stdout)
 - `-f / --format json|csv`: Output format for saved files (default: `json`)
 
+**IMPORTANT**: Global options must come **before** the subcommand name:
+```
+uv run intervals-icu-tools -o ./data list-activities --oldest 2024-01-01 --newest 2024-12-31
+#                          ^^^^^^^^^^^ before subcommand ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+Placing `-o` after the subcommand causes: `Error: No such option: -o`
+
 ## Available Commands
 
 ### list-activities
 List activities for a date range. Prints JSON to stdout or saves with `-o`.
 
 ```
-uv run intervals-icu-tools list-activities --oldest 2024-01-01 --newest 2024-12-31 [--limit 50] [-o ./data]
+uv run intervals-icu-tools [-o ./data] list-activities --oldest 2024-01-01 --newest 2024-12-31 [--limit 50]
 ```
 
 Output: Array of activity objects with id, name, type, start_date_local, distance, moving_time, icu_training_load, etc.
@@ -58,7 +65,7 @@ Output: Full activity JSON with all 173+ fields.
 Search activities by name or tag.
 
 ```
-uv run intervals-icu-tools search-activities "<query>" [--full] [--limit 20] [-o ./data]
+uv run intervals-icu-tools [-o ./data] search-activities "<query>" [--full] [--limit 20]
 ```
 
 Options:
@@ -78,7 +85,7 @@ Output: Updated activity JSON.
 Get structured interval/lap data for an activity.
 
 ```
-uv run intervals-icu-tools get-intervals <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-intervals <activity_id>
 ```
 
 Output: JSON with `icu_intervals` (each with avg/max power, HR, cadence, duration) and `icu_groups`.
@@ -88,18 +95,18 @@ Use when: You need lap-by-lap performance breakdown.
 Get second-by-second time-series data for an activity.
 
 ```
-uv run intervals-icu-tools get-streams <activity_id> [--types watts,heartrate,cadence] [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-streams <activity_id> [--types watts,heartrate,cadence]
 ```
 
 Available stream types: `time, watts, heartrate, cadence, distance, altitude, lat, lon, speed, temperature, smo2, thb`
 Output: Array of stream objects, each with `type`, `name`, `data` array.
-IMPORTANT: For activities >1 hour, output is large (>50KB). Always use `-o` to save to disk.
+IMPORTANT: For activities >1 hour, output is large (>50KB). Always use `-o ./data` (before the subcommand) to save to disk.
 
 ### get-power-curve
 Get the mean-maximal power (MMP) curve for an activity.
 
 ```
-uv run intervals-icu-tools get-power-curve <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-power-curve <activity_id>
 ```
 
 Output: JSON with duration buckets (secs) and peak power values (watts).
@@ -109,7 +116,7 @@ Use when: Analyzing peak efforts at specific durations (5s, 1min, 5min, 20min, F
 Get the heart rate curve for an activity.
 
 ```
-uv run intervals-icu-tools get-hr-curve <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-hr-curve <activity_id>
 ```
 
 Output: JSON with duration buckets and peak HR values (bpm).
@@ -118,7 +125,7 @@ Output: JSON with duration buckets and peak HR values (bpm).
 Get the pace curve for running/swimming activities.
 
 ```
-uv run intervals-icu-tools get-pace-curve <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-pace-curve <activity_id>
 ```
 
 Output: JSON with distance buckets and best pace values (m/s).
@@ -127,7 +134,7 @@ Output: JSON with distance buckets and best pace values (m/s).
 Get best efforts detected in an activity (fastest 1km, 5km, 10km, etc.).
 
 ```
-uv run intervals-icu-tools get-best-efforts <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-best-efforts <activity_id>
 ```
 
 Output: JSON with `efforts` list — each has distance/duration, elapsed time, avg power/HR/pace.
@@ -136,7 +143,7 @@ Output: JSON with `efforts` list — each has distance/duration, elapsed time, a
 Get matched Strava/Intervals segments for an activity.
 
 ```
-uv run intervals-icu-tools get-segments <activity_id> [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-segments <activity_id>
 ```
 
 Output: Array of segment objects with name, distance, elapsed time, rank, PR status.
@@ -145,7 +152,7 @@ Output: Array of segment objects with name, distance, elapsed time, rank, PR sta
 Download an activity file (original upload, FIT, or GPX) to disk.
 
 ```
-uv run intervals-icu-tools download-activity-file <activity_id> --type original|fit|gpx -o ./data
+uv run intervals-icu-tools -o ./data download-activity-file <activity_id> --type original|fit|gpx
 ```
 
 Output: File saved to `<output-dir>/`. Prints path and size on success.
@@ -156,7 +163,7 @@ be saved with `-o`, not printed to stdout.
 Download all activities in a date range as a CSV file.
 
 ```
-uv run intervals-icu-tools download-activities-csv --oldest 2024-01-01 --newest 2024-12-31 -o ./data
+uv run intervals-icu-tools -o ./data download-activities-csv --oldest 2024-01-01 --newest 2024-12-31
 ```
 
 Output: `activities.csv` saved to output directory. Prints path and size on success.
@@ -166,7 +173,7 @@ Use when: You need bulk activity data for analysis (spreadsheets, pandas, etc.).
 Get best power curves across all activities in a date range.
 
 ```
-uv run intervals-icu-tools get-athlete-power-curves --oldest 2024-01-01 --newest 2024-12-31 [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-athlete-power-curves --oldest 2024-01-01 --newest 2024-12-31
 ```
 
 Output: Aggregated power curve data showing peak watts at each duration across all activities.
@@ -176,14 +183,14 @@ Use when: Tracking fitness progression or comparing training blocks.
 Get best HR curves across all activities in a date range.
 
 ```
-uv run intervals-icu-tools get-athlete-hr-curves --oldest 2024-01-01 --newest 2024-12-31 [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-athlete-hr-curves --oldest 2024-01-01 --newest 2024-12-31
 ```
 
 ### get-athlete-pace-curves
 Get best pace curves across all activities in a date range.
 
 ```
-uv run intervals-icu-tools get-athlete-pace-curves --oldest 2024-01-01 --newest 2024-12-31 [-o ./data]
+uv run intervals-icu-tools [-o ./data] get-athlete-pace-curves --oldest 2024-01-01 --newest 2024-12-31
 ```
 
 ## Exit Codes
@@ -202,13 +209,13 @@ uv run intervals-icu-tools get-athlete-pace-curves --oldest 2024-01-01 --newest 
 1. Use MCP tool `get_activity_streams` for short activities (<1 hour)
 2. For longer activities, use CLI to save to disk:
    ```
-   uv run intervals-icu-tools get-streams <id> --types watts,heartrate -o ./data
+   uv run intervals-icu-tools -o ./data get-streams <id> --types watts,heartrate
    ```
 3. Read the saved JSON file for analysis
 
 ### Download then analyze
 ```bash
-uv run intervals-icu-tools download-activities-csv --oldest 2024-01-01 --newest 2024-12-31 -o ./data
+uv run intervals-icu-tools -o ./data download-activities-csv --oldest 2024-01-01 --newest 2024-12-31
 head -5 ./data/activities.csv
 ```
 

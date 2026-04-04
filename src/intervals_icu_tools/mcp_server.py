@@ -8,6 +8,7 @@ so the LLM can reason about failures and recover gracefully.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.resources import FileResource
@@ -68,6 +69,15 @@ mcp.add_resource(
 
 def _make_service() -> IntervalsService:
     return IntervalsService(load_config())
+
+
+def _strip_nulls(obj: Any) -> Any:
+    """Recursively remove keys with None values from dicts (and nested structures)."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(item) for item in obj]
+    return obj
 
 
 def _err(e: Exception) -> dict:
@@ -210,7 +220,7 @@ async def get_activity_intervals(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_activity_intervals(activity_id)
+        return _strip_nulls(await svc.get_activity_intervals(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -235,7 +245,7 @@ async def get_activity_streams(activity_id: str, types: str | None = None) -> li
     try:
         svc = _make_service()
         type_list = [t.strip() for t in types.split(",")] if types else None
-        return await svc.get_activity_streams(activity_id, types=type_list)
+        return _strip_nulls(await svc.get_activity_streams(activity_id, types=type_list))
     except Exception as e:
         return _err(e)
 
@@ -253,7 +263,7 @@ async def get_power_curve(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_power_curve(activity_id)
+        return _strip_nulls(await svc.get_power_curve(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -270,7 +280,7 @@ async def get_hr_curve(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_hr_curve(activity_id)
+        return _strip_nulls(await svc.get_hr_curve(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -287,7 +297,7 @@ async def get_pace_curve(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_pace_curve(activity_id)
+        return _strip_nulls(await svc.get_pace_curve(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -305,7 +315,7 @@ async def get_best_efforts(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_best_efforts(activity_id)
+        return _strip_nulls(await svc.get_best_efforts(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -322,7 +332,7 @@ async def get_activity_segments(activity_id: str) -> list[dict] | dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_activity_segments(activity_id)
+        return _strip_nulls(await svc.get_activity_segments(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -340,7 +350,7 @@ async def get_activity_map(activity_id: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_activity_map(activity_id)
+        return _strip_nulls(await svc.get_activity_map(activity_id))
     except Exception as e:
         return _err(e)
 
@@ -367,7 +377,7 @@ async def get_athlete_power_curves(oldest: str, newest: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_athlete_power_curves(oldest, newest)
+        return _strip_nulls(await svc.get_athlete_power_curves(oldest, newest))
     except Exception as e:
         return _err(e)
 
@@ -385,7 +395,7 @@ async def get_athlete_hr_curves(oldest: str, newest: str) -> dict:
     """
     try:
         svc = _make_service()
-        return await svc.get_athlete_hr_curves(oldest, newest)
+        return _strip_nulls(await svc.get_athlete_hr_curves(oldest, newest))
     except Exception as e:
         return _err(e)
 

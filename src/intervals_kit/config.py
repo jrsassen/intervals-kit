@@ -1,4 +1,4 @@
-"""Configuration management for intervals-icu-tools.
+"""Configuration management for intervals-kit.
 
 Priority chain: environment variables > config file > error.
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, field_validator
 
-CONFIG_FILE = Path.home() / ".config" / "intervals-icu-tools" / "config.toml"
+CONFIG_FILE = Path.home() / ".config" / "intervals-kit" / "config.toml"
 
 
 class ApiConfig(BaseModel):
@@ -59,5 +59,5 @@ def load_config() -> ApiConfig:
         raise ValueError(
             f"Configuration error: {e}. "
             "Set INTERVALS_API_KEY and INTERVALS_ATHLETE_ID environment variables, "
-            "or create ~/.config/intervals-icu-tools/config.toml with api_key and athlete_id."
+            "or create ~/.config/intervals-kit/config.toml with api_key and athlete_id."
         ) from e

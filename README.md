@@ -211,7 +211,7 @@ uv run pytest -m integration
 
 ## Architecture
 
-Three interfaces share one service layer — see `SPECIFICATIONS.md` for the full architecture and `src/intervals_kit/cli_tools.md` for the complete CLI reference intended for LLM agents.
+Three interfaces share one service layer — see `docs/SPECIFICATIONS.md` for the full architecture and `src/intervals_kit/cli_tools.md` for the complete CLI reference intended for LLM agents.
 
 ```
 MCP Tools (FastMCP)  ──┐

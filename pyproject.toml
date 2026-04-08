@@ -1,6 +1,6 @@
 [project]
 name = "intervals-kit"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP server, CLI, and Python library for the Intervals.ICU fitness tracking API"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -23,7 +23,7 @@ _project_root = Path(__file__).parent.parent.parent
 _CLI_INVOCATION = (
     f"uv run --directory {_project_root} intervals-icu-tools"
     if (_project_root / "pyproject.toml").exists()
-    else "uvx intervals-icu-tools"
+    else "uvx --from intervals-kit intervals-icu-tools"
 )
 
 mcp = FastMCP(

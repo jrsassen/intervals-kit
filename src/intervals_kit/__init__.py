@@ -8,7 +8,7 @@ Library usage:
     activities = await service.list_activities("2024-01-01", "2024-12-31")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Public library API — importable by scripts and notebooks.
 # Do NOT import mcp_server or cli here: they have heavy deps (FastMCP, Click)

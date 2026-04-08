@@ -1,20 +1,22 @@
-# intervals-icu-tools
+# intervals-kit
 
-MCP server and CLI for the [Intervals.ICU](https://intervals.icu) fitness tracking API. Exposes activity data (power curves, HR curves, streams, intervals, segments, file downloads) to AI assistants via the Model Context Protocol, and as a command-line tool for scripting and bulk data access.
+MCP server, CLI, and Python library for the [Intervals.ICU](https://intervals.icu) fitness tracking API. Exposes activity data (power curves, HR curves, streams, intervals, segments, file downloads) to AI assistants via the Model Context Protocol, and as a command-line tool for scripting and bulk data access.
 
 ## Requirements
 
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) — used for running the package
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) — recommended for running the package
 
 ## Installation
 
-Clone the repository and install as an editable package:
+```bash
+pip install intervals-kit
+```
+
+Or with uv:
 
 ```bash
-git clone <repo-url>
-cd intervals-icu-mcp
-uv pip install -e .
+uv pip install intervals-kit
 ```
 
 ## Configuration
@@ -28,7 +30,7 @@ export INTERVALS_API_KEY=your_api_key      # From intervals.icu → Settings →
 export INTERVALS_ATHLETE_ID=iXXXXXX       # Your athlete ID (visible in the URL when logged in)
 ```
 
-**Config file** (`~/.config/intervals-icu-tools/config.toml`):
+**Config file** (`~/.config/intervals-kit/config.toml`):
 
 ```toml
 api_key = "your_api_key"
@@ -40,14 +42,14 @@ Environment variables take precedence over the config file.
 
 ## Usage as MCP Server (Claude Code / Claude Desktop)
 
-Add the server to your Claude Code MCP config (`.claude/mcp.json` or via `claude mcp add`):
+The easiest way — no installation needed:
 
 ```json
 {
   "mcpServers": {
     "intervals-icu": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/intervals-icu-mcp", "intervals-icu-mcp"],
+      "command": "uvx",
+      "args": ["intervals-kit"],
       "env": {
         "INTERVALS_API_KEY": "your_api_key",
         "INTERVALS_ATHLETE_ID": "iXXXXXX"
@@ -87,67 +89,67 @@ For large data (streams >1 hour, CSV exports, binary files) the MCP tools return
 ## Usage as CLI
 
 ```bash
-uv run intervals-icu-tools --help
+uvx --from intervals-kit intervals-icu-tools --help
 ```
 
 ### Activity commands
 
 ```bash
 # List activities for a date range (JSON to stdout)
-uv run intervals-icu-tools list-activities --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools list-activities --oldest 2025-01-01 --newest 2025-03-31
 
 # Save to a file instead of stdout
-uv run intervals-icu-tools -o ./data list-activities --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools -o ./data list-activities --oldest 2025-01-01 --newest 2025-03-31
 
 # Get a single activity
-uv run intervals-icu-tools get-activity i136292802
+uvx --from intervals-kit intervals-icu-tools get-activity i136292802
 
 # Search by name or tag (# prefix for exact tag match)
-uv run intervals-icu-tools search-activities "long ride"
-uv run intervals-icu-tools search-activities "#race" --full
+uvx --from intervals-kit intervals-icu-tools search-activities "long ride"
+uvx --from intervals-kit intervals-icu-tools search-activities "#race" --full
 
 # Update fields
-uv run intervals-icu-tools update-activity i136292802 --perceived-exertion 7 --description "Felt strong"
+uvx --from intervals-kit intervals-icu-tools update-activity i136292802 --perceived-exertion 7 --description "Felt strong"
 ```
 
 ### Sub-resource commands
 
 ```bash
 # Lap/interval data
-uv run intervals-icu-tools get-intervals i136292802
+uvx --from intervals-kit intervals-icu-tools get-intervals i136292802
 
 # Time-series streams (specify types to limit size)
-uv run intervals-icu-tools -o ./data get-streams i136292802 --types watts,heartrate,cadence
+uvx --from intervals-kit intervals-icu-tools -o ./data get-streams i136292802 --types watts,heartrate,cadence
 
 # Power / HR / pace curves
-uv run intervals-icu-tools get-power-curve i136292802
-uv run intervals-icu-tools get-hr-curve i136292802
-uv run intervals-icu-tools get-pace-curve i136292816  # running activity
+uvx --from intervals-kit intervals-icu-tools get-power-curve i136292802
+uvx --from intervals-kit intervals-icu-tools get-hr-curve i136292802
+uvx --from intervals-kit intervals-icu-tools get-pace-curve i136292816  # running activity
 
 # Best efforts, segments, GPS map
-uv run intervals-icu-tools get-best-efforts i136292802
-uv run intervals-icu-tools get-segments i136292802
-uv run intervals-icu-tools -o ./data get-activity-map i136292802
+uvx --from intervals-kit intervals-icu-tools get-best-efforts i136292802
+uvx --from intervals-kit intervals-icu-tools get-segments i136292802
+uvx --from intervals-kit intervals-icu-tools -o ./data get-activity-map i136292802
 ```
 
 ### File download commands
 
 ```bash
 # Download original upload / FIT / GPX file
-uv run intervals-icu-tools -o ./data download-activity-file i136292802 --type fit
-uv run intervals-icu-tools -o ./data download-activity-file i136292802 --type gpx
+uvx --from intervals-kit intervals-icu-tools -o ./data download-activity-file i136292802 --type fit
+uvx --from intervals-kit intervals-icu-tools -o ./data download-activity-file i136292802 --type gpx
 
 # Bulk CSV export for a date range
-uv run intervals-icu-tools -o ./data download-activities-csv --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools -o ./data download-activities-csv --oldest 2025-01-01 --newest 2025-03-31
 ```
 
 ### Aggregate curves
 
 ```bash
 # Best power/HR/pace curves across all activities in a date range
-uv run intervals-icu-tools get-athlete-power-curves --oldest 2025-01-01 --newest 2025-03-31
-uv run intervals-icu-tools get-athlete-hr-curves --oldest 2025-01-01 --newest 2025-03-31
-uv run intervals-icu-tools get-athlete-pace-curves --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools get-athlete-power-curves --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools get-athlete-hr-curves --oldest 2025-01-01 --newest 2025-03-31
+uvx --from intervals-kit intervals-icu-tools get-athlete-pace-curves --oldest 2025-01-01 --newest 2025-03-31
 ```
 
 ### Global options
@@ -171,7 +173,7 @@ uv run intervals-icu-tools get-athlete-pace-curves --oldest 2025-01-01 --newest 
 
 ```python
 import asyncio
-from intervals_icu_tools import IntervalsService, load_config
+from intervals_kit import IntervalsService, load_config
 
 async def main():
     svc = IntervalsService(load_config())
@@ -192,8 +194,9 @@ asyncio.run(main())
 ## Development
 
 ```bash
-# Install with dev dependencies
-uv pip install -e .
+# Clone and install with dev dependencies
+git clone https://github.com/jrsassen/intervals-kit
+cd intervals-kit
 uv sync
 
 # Run tests
@@ -208,7 +211,7 @@ uv run pytest -m integration
 
 ## Architecture
 
-Three interfaces share one service layer — see `SPECIFICATIONS.md` for the full architecture and `src/intervals_icu_tools/cli_tools.md` for the complete CLI reference intended for LLM agents.
+Three interfaces share one service layer — see `SPECIFICATIONS.md` for the full architecture and `src/intervals_kit/cli_tools.md` for the complete CLI reference intended for LLM agents.
 
 ```
 MCP Tools (FastMCP)  ──┐
@@ -219,7 +222,7 @@ Python import        ──┘
 Source layout:
 
 ```
-src/intervals_icu_tools/
+src/intervals_kit/
 ├── errors.py        # Exception types
 ├── models.py        # Pydantic models
 ├── config.py        # Configuration loading

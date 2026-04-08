@@ -383,7 +383,7 @@ For complex analysis, import the service layer directly:
 
 ```python
 import asyncio
-from intervals_icu_tools import IntervalsService, load_config
+from intervals_kit import IntervalsService, load_config
 
 async def main():
     svc = IntervalsService(load_config())

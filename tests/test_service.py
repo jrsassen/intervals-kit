@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from intervals_icu_tools.config import ApiConfig
-from intervals_icu_tools.models import Activity, ActivitySearchResult, FileDownloadResult
-from intervals_icu_tools.service import IntervalsService
+from intervals_kit.config import ApiConfig
+from intervals_kit.models import Activity, ActivitySearchResult, FileDownloadResult
+from intervals_kit.service import IntervalsService
 
 
 @pytest.fixture

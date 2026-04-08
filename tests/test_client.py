@@ -6,9 +6,9 @@ import respx
 import httpx
 import pytest
 
-from intervals_icu_tools.client import IntervalsClient, _parse_content_disposition, _filename_from_path
-from intervals_icu_tools.config import ApiConfig
-from intervals_icu_tools.errors import AuthenticationError, NotFoundError, RateLimitError, DownloadError
+from intervals_kit.client import IntervalsClient, _parse_content_disposition, _filename_from_path
+from intervals_kit.config import ApiConfig
+from intervals_kit.errors import AuthenticationError, NotFoundError, RateLimitError, DownloadError
 
 
 @pytest.fixture

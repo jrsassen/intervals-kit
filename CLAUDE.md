@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-A Python package providing an MCP server and CLI for the Intervals.ICU REST API. See `SPECIFICATIONS.md` for the architecture spec (used to guide adding new endpoints) and `src/intervals_icu_tools/cli_tools.md` for the full CLI reference.
+A Python package providing an MCP server and CLI for the Intervals.ICU REST API. See `SPECIFICATIONS.md` for the architecture spec (used to guide adding new endpoints) and `src/intervals_kit/cli_tools.md` for the full CLI reference.
 
 ## Commands
 

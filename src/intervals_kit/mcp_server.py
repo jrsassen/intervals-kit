@@ -7,6 +7,7 @@ so the LLM can reason about failures and recover gracefully.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -775,4 +776,16 @@ async def create_activity_message(activity_id: str, content: str) -> dict:
 
 def main() -> None:
     """Entry point for the MCP server (intervals-icu-mcp)."""
+    try:
+        load_config()
+    except ValueError as e:
+        print(
+            f"\nERROR: Intervals.ICU MCP server cannot start — credentials not configured.\n\n"
+            f"  {e}\n\n"
+            "Fix: set environment variables INTERVALS_API_KEY and INTERVALS_ATHLETE_ID,\n"
+            "or create ~/.config/intervals-kit/config.toml with api_key and athlete_id.\n"
+            "After setting credentials, restart the MCP server.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     mcp.run()

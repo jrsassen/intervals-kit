@@ -7,6 +7,7 @@ so the LLM can reason about failures and recover gracefully.
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Any
@@ -774,10 +775,10 @@ async def create_activity_message(activity_id: str, content: str) -> dict:
         return _err(e)
 
 
-def main() -> None:
-    """Entry point for the MCP server (intervals-icu-mcp)."""
+async def _check_credentials() -> None:
+    """Validate that credentials exist and authenticate successfully against the API."""
     try:
-        load_config()
+        config = load_config()
     except ValueError as e:
         print(
             f"\nERROR: Intervals.ICU MCP server cannot start — credentials not configured.\n\n"
@@ -788,4 +789,29 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+
+    try:
+        await IntervalsService(config).get_athlete()
+    except AuthenticationError as e:
+        print(
+            f"\nERROR: Intervals.ICU MCP server cannot start — authentication failed.\n\n"
+            f"  {e}\n\n"
+            "Fix: check that INTERVALS_API_KEY and INTERVALS_ATHLETE_ID are correct.\n"
+            "After correcting credentials, restart the MCP server.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(
+            f"\nERROR: Intervals.ICU MCP server cannot start — credential check failed.\n\n"
+            f"  {type(e).__name__}: {e}\n\n"
+            "Fix: check your network connection and credentials, then restart the MCP server.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def main() -> None:
+    """Entry point for the MCP server (intervals-icu-mcp)."""
+    asyncio.run(_check_credentials())
     mcp.run()

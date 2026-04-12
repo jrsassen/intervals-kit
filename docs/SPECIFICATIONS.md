@@ -338,7 +338,7 @@ Both the MCP server and CLI must handle these, but differently (see Error Handli
 
 ### `pyproject.toml` — Package Configuration
 
-This is the most critical file. It defines two entry points (MCP server + CLI), all
+This is the most critical file. It defines entry points (MCP server + CLI), all
 dependencies, and the build system. Using `hatchling` as the build backend because it's
 lightweight, widely supported, and works perfectly with `uvx`.
 
@@ -356,15 +356,19 @@ dependencies = [
     "httpx>=0.27",              # Async HTTP client for REST API calls
     "pydantic>=2.0",            # Data validation and serialization
     "click>=8.0",               # CLI framework
+    "tomli>=2.0; python_version<'3.11'",  # TOML parsing for config file (stdlib in 3.11+)
 ]
 
 [project.scripts]
-# CLI entry point: `uvx myapi-tools <command>` or after install: `myapi-tools <command>`
-# Points to cli/__init__.py which imports commands.py for registration
-myapi-tools = "myapi_tools.cli:cli"
+# Short alias — matches the package name, simplifies `uvx myapi-tools` and MCP config
+myapi-tools = "myapi_tools.mcp_server:main"
 
-# MCP entry point: used in Claude Code / Claude Desktop config
+# Descriptive MCP entry point — makes it obvious what it does in config files
 myapi-tools-mcp = "myapi_tools.mcp_server:main"
+
+# CLI entry point: `uvx --from myapi-tools myapi-tools-cli <command>`
+# Points to cli/__init__.py which imports commands.py for registration
+myapi-tools-cli = "myapi_tools.cli:cli"
 
 [build-system]
 requires = ["hatchling"]
@@ -458,6 +462,33 @@ Pydantic models representing API entities. Shared across all layers:
 - Request/response models for each API endpoint
 - Export models (what gets written to JSON/CSV)
 
+**Use `extra="allow"` for API response models.** Real-world APIs return dozens to hundreds
+of fields per entity (e.g. 173 activity fields, 154 athlete fields). Explicitly typing
+every field is impractical and fragile — new API fields would be silently dropped. Instead,
+define explicit types only for the fields you actively use in business logic, and let
+Pydantic pass the rest through:
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+class Activity(BaseModel):
+    """Core activity fields. extra='allow' passes through all 173+ API fields."""
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    name: str | None = None
+    type: str | None = None
+    start_date_local: str | None = None
+    distance: float | None = None
+    moving_time: int | None = None
+    # ... only the fields you reference in service.py or filter on
+```
+
+This means `model_dump()` always returns the full API response (including fields you didn't
+explicitly define), while giving you typed access to the fields that matter for business
+logic. When serializing for MCP, use `model_dump(exclude_none=True)` to strip null fields
+and save LLM context tokens (see MCP tools section below).
+
 ### `src/myapi_tools/service.py` — Shared Business Logic
 
 **This is where all the real work lives.** A `MyAPIService` class (or module of functions)
@@ -542,11 +573,14 @@ Thin wrapper that registers FastMCP tools. Each tool is a few lines that call th
 layer and format the response for the LLM context window.
 
 ```python
+import asyncio
+import sys
 from pathlib import Path
 from fastmcp import FastMCP
 from fastmcp.resources import FileResource
 from .config import load_config
 from .service import MyAPIService
+from .errors import MyAPIError, AuthenticationError, RateLimitError, NotFoundError
 
 # Detect whether running from a source tree (editable/local install) or a PyPI/uvx install.
 # pyproject.toml exists at the project root only in a source tree.
@@ -590,8 +624,49 @@ mcp.add_resource(
     )
 )
 
+def _make_service() -> MyAPIService:
+    """Create a fresh service instance per tool call.
+
+    Each MCP tool call creates its own service (and thus its own httpx client)
+    rather than sharing a long-lived instance. This avoids stale connection/config
+    issues in the MCP server's long-running process and keeps tools stateless.
+    """
+    return MyAPIService(load_config())
+
+
+def _strip_nulls(obj):
+    """Recursively remove keys with None values from dicts (and nested structures).
+
+    API responses are often full of null fields. Stripping them before returning
+    to the LLM saves context tokens and makes the output easier to read.
+    """
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(item) for item in obj]
+    return obj
+
+
+def _err(e: Exception) -> dict:
+    """Map exceptions to structured error dicts the LLM can act on.
+
+    Centralizes the exception→error-dict mapping so each @mcp.tool only needs
+    `except Exception as e: return _err(e)` instead of repeating the full
+    try/except chain. This significantly reduces per-tool boilerplate.
+    """
+    if isinstance(e, AuthenticationError):
+        return {"error": f"Authentication failed. Check that MYAPI_KEY is set correctly. Details: {e}"}
+    if isinstance(e, RateLimitError):
+        return {"error": f"Rate limit exceeded. Retry after {e.retry_after} seconds."}
+    if isinstance(e, NotFoundError):
+        return {"error": f"Resource not found: {e}"}
+    if isinstance(e, MyAPIError):
+        return {"error": f"API error: {e}"}
+    return {"error": f"Unexpected error: {type(e).__name__}: {e}"}
+
+
 @mcp.tool
-async def list_items(category: str, limit: int = 20) -> list[dict]:
+async def list_items(category: str, limit: int = 20) -> list[dict] | dict:
     """List items from MyAPI by category.
 
     Args:
@@ -601,22 +676,26 @@ async def list_items(category: str, limit: int = 20) -> list[dict]:
     Returns:
         List of items with id, name, description, and price fields.
     """
-    config = load_config()
-    service = MyAPIService(config)
-    items = await service.list_items(category, limit=min(limit, 100))
-    return [item.model_dump() for item in items]
+    try:
+        svc = _make_service()
+        items = await svc.list_items(category, limit=min(limit, 100))
+        return [item.model_dump(exclude_none=True) for item in items]
+    except Exception as e:
+        return _err(e)
 
 @mcp.tool
-async def search(query: str, max_results: int = 10) -> list[dict]:
+async def search(query: str, max_results: int = 10) -> list[dict] | dict:
     """Search for items across all categories.
 
     Args:
         query: Free-text search query
         max_results: Maximum results to return (default: 10)
     """
-    config = load_config()
-    service = MyAPIService(config)
-    return [item.model_dump() for item in await service.search(query, max_results)]
+    try:
+        svc = _make_service()
+        return [item.model_dump(exclude_none=True) for item in await svc.search(query, max_results)]
+    except Exception as e:
+        return _err(e)
 
 @mcp.tool
 async def get_file_info(file_id: str) -> dict:
@@ -632,9 +711,37 @@ async def get_file_info(file_id: str) -> dict:
         If the file is large or binary, use the CLI to download it:
         `uvx myapi-tools download-file <file_id> -o ./output`
     """
-    config = load_config()
-    service = MyAPIService(config)
-    return (await service.get_file_metadata(file_id)).model_dump()
+    try:
+        svc = _make_service()
+        return (await svc.get_file_metadata(file_id)).model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+@mcp.tool
+async def update_item(item_id: str, fields: str) -> dict:
+    """Update fields on an item. Only provided fields are changed.
+
+    For mutating tools with many optional fields, accept a single JSON string
+    parameter rather than individual optional parameters. MCP tool schemas cannot
+    express open-ended key-value maps, and listing every optional field as a
+    separate parameter clutters the tool description for the LLM.
+
+    Args:
+        item_id: The item ID to update
+        fields: JSON object of fields to update. Common fields:
+            name (str), description (str), price (float), category (str).
+            Example: '{"name": "New Name", "price": 29.99}'
+
+    Returns:
+        Updated item dict with all fields.
+    """
+    import json as _json
+    try:
+        svc = _make_service()
+        item = await svc.update_item(item_id, **_json.loads(fields))
+        return item.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
 
 @mcp.tool
 async def request_export(category: str, fmt: str = "csv") -> dict:
@@ -654,13 +761,57 @@ async def request_export(category: str, fmt: str = "csv") -> dict:
     Returns:
         Dict with export_id, status, estimated_size_bytes.
     """
-    config = load_config()
-    service = MyAPIService(config)
-    job = await service.request_export(category, fmt)
-    return job.model_dump()
+    try:
+        svc = _make_service()
+        job = await svc.request_export(category, fmt)
+        return job.model_dump(exclude_none=True)
+    except Exception as e:
+        return _err(e)
+
+
+async def _check_credentials() -> None:
+    """Validate credentials exist and authenticate against the API at startup.
+
+    Without this, misconfigured credentials produce cryptic per-tool errors
+    that the LLM struggles to diagnose. Failing fast with a clear message
+    tells the user exactly what to fix before they waste time.
+    """
+    try:
+        config = load_config()
+    except ValueError as e:
+        print(
+            f"\nERROR: MCP server cannot start — credentials not configured.\n\n"
+            f"  {e}\n\n"
+            "Fix: set environment variables MYAPI_KEY (and any other required vars),\n"
+            "or create the config file. After setting credentials, restart the MCP server.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        # Call a lightweight read-only endpoint to verify the key works.
+        await MyAPIService(config).get_profile()
+    except AuthenticationError as e:
+        print(
+            f"\nERROR: MCP server cannot start — authentication failed.\n\n"
+            f"  {e}\n\n"
+            "Fix: check that your API key is correct, then restart the MCP server.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(
+            f"\nERROR: MCP server cannot start — credential check failed.\n\n"
+            f"  {type(e).__name__}: {e}\n\n"
+            "Fix: check your network connection and credentials, then restart.\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
 
 def main():
     """Entry point for the MCP server."""
+    asyncio.run(_check_credentials())
     mcp.run()
 ```
 
@@ -684,9 +835,28 @@ to the LLM agent, not just documentation for humans.
 - **Cap results** (`limit: 100`): MCP tools return data into the LLM context window.
   Large results waste tokens and degrade performance.
 - **Return dicts, not raw text**: FastMCP serializes them to JSON automatically.
+- **Strip nulls from responses**: Use `model_dump(exclude_none=True)` on Pydantic models
+  and `_strip_nulls()` on raw dicts. API responses are often full of null fields — stripping
+  them before returning to the LLM saves context tokens and reduces noise. This is especially
+  important with `extra="allow"` models that pass through all API fields.
 - **Docstrings are the tool descriptions**: FastMCP extracts them for the LLM. Write
   them as if you're explaining to an LLM what the tool does and when to use it.
 - **No file I/O in MCP tools**: If the user needs bulk data, point them to the CLI.
+- **Create a fresh service per tool call** (`_make_service()`): Each tool call creates its
+  own service instance. Do not share a long-lived service across tools — the MCP server is
+  a long-running process, and shared state risks stale connections and config.
+- **Centralize error mapping** (`_err()`): Extract a shared function that maps exceptions to
+  error dicts. Each tool body is then just `try: ... except Exception as e: return _err(e)`.
+  Without this, the try/except chain is duplicated in every tool and drifts over time.
+- **Use a JSON string parameter for open-ended fields**: For mutating tools (update, create)
+  where the API accepts many optional fields, use a single `fields: str` parameter that
+  accepts a JSON object string (e.g. `'{"name": "New", "price": 9.99}'`). MCP tool schemas
+  cannot express arbitrary key-value maps, and enumerating every optional field as a separate
+  parameter clutters the tool description. Include examples in the docstring.
+- **Fail fast on startup** (`_check_credentials()`): Before calling `mcp.run()`, validate
+  that credentials exist and authenticate successfully against the API. Without this, the
+  LLM gets cryptic per-tool auth errors and can't diagnose the root cause. A clear startup
+  error message tells the user exactly what to fix.
 - **Server `instructions=`**: Always set the `instructions` parameter on `FastMCP(...)`.
   It is sent to the LLM on every connection (MCP `initialize` response) and should
   contain the correct CLI invocation. Detect the install context at module load time:
@@ -703,55 +873,71 @@ to the LLM agent, not just documentation for humans.
 ### Error Handling Patterns
 
 Errors from the API client bubble up as typed exceptions (see `errors.py`). The MCP
-server and CLI handle them differently:
+server and CLI handle them differently, but both should centralize the mapping to avoid
+repeating the same try/except chain in every tool/command.
 
 **In MCP tools** — return error information as text the LLM can reason about. Never raise
-exceptions through MCP (the client sees an opaque "internal error"). Instead, catch and
-return a structured error dict:
+exceptions through MCP (the client sees an opaque "internal error"). Extract a shared
+`_err()` helper that maps exceptions to structured error dicts:
 
 ```python
+def _err(e: Exception) -> dict:
+    """Map exceptions to structured error dicts the LLM can act on."""
+    if isinstance(e, AuthenticationError):
+        return {"error": f"Authentication failed. Check that MYAPI_KEY is set correctly. Details: {e}"}
+    if isinstance(e, RateLimitError):
+        return {"error": f"Rate limit exceeded. Retry after {e.retry_after} seconds."}
+    if isinstance(e, NotFoundError):
+        return {"error": f"Resource not found: {e}"}
+    if isinstance(e, MyAPIError):
+        return {"error": f"API error: {e}"}
+    return {"error": f"Unexpected error: {type(e).__name__}: {e}"}
+
+# Then each tool is just:
 @mcp.tool
 async def list_items(category: str, limit: int = 20) -> dict | list[dict]:
     """..."""
     try:
-        config = load_config()
-        service = MyAPIService(config)
-        items = await service.list_items(category, limit=min(limit, 100))
-        return [item.model_dump() for item in items]
-    except AuthenticationError:
-        return {"error": "Authentication failed. Check that MYAPI_KEY is set correctly."}
-    except RateLimitError as e:
-        return {"error": f"Rate limited. Retry after {e.retry_after} seconds."}
-    except NotFoundError:
-        return {"error": f"Category '{category}' not found."}
-    except MyAPIError as e:
-        return {"error": f"API error: {e}"}
+        svc = _make_service()
+        items = await svc.list_items(category, limit=min(limit, 100))
+        return [item.model_dump(exclude_none=True) for item in items]
+    except Exception as e:
+        return _err(e)
 ```
 
-**In CLI commands** — print to stderr and exit with a non-zero code. The LLM reads both
-stdout and stderr, so the error message should be concise and actionable:
+**In CLI commands** — similarly, extract a shared `_handle()` helper that prints to stderr
+and exits with the correct code:
 
 ```python
+def _handle(e: Exception) -> None:
+    """Map exceptions to stderr messages and exit codes."""
+    if isinstance(e, AuthenticationError):
+        _exit(str(e), 1)
+    if isinstance(e, RateLimitError):
+        _exit(f"Rate limited. Retry after {e.retry_after}s.", 2)
+    if isinstance(e, DownloadError):
+        _exit(str(e), 3)
+    if isinstance(e, NotFoundError):
+        _exit(str(e), 4)
+    if isinstance(e, MyAPIError):
+        _exit(str(e), 1)
+    _exit(str(e), 1)
+
+def _exit(msg: str, code: int) -> None:
+    click.echo(f"Error: {msg}", err=True)
+    sys.exit(code)
+
+# Then each command is just:
 @cli.command()
 @click.pass_context
 def download(ctx, category, limit):
     """..."""
+    svc = MyAPIService(ctx.obj["config"])
     try:
-        service = MyAPIService(ctx.obj["config"])
-        result = asyncio.run(service.download_all(...))
+        result = asyncio.run(svc.download_all(...))
         click.echo(f"Saved {result.count} items to {result.path}")
-    except AuthenticationError:
-        click.echo("Error: Authentication failed. Set MYAPI_KEY environment variable.", err=True)
-        raise SystemExit(1)
-    except RateLimitError as e:
-        click.echo(f"Error: Rate limited. Retry after {e.retry_after}s.", err=True)
-        raise SystemExit(2)
-    except DownloadError as e:
-        click.echo(f"Error: Download failed: {e}", err=True)
-        raise SystemExit(3)
-    except MyAPIError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    except Exception as e:
+        _handle(e)
 ```
 
 **Exit code convention** for the CLI (so the calling LLM can react programmatically):
@@ -1412,49 +1598,47 @@ async def test_download_all_writes_json(service, mock_items, tmp_output):
 
 ### `tests/test_mcp.py` — MCP Server Tests
 
-FastMCP provides a test client for in-process testing without starting a real server:
+FastMCP provides a test client for in-process testing without starting a real server.
+
+**Mock at the service factory level** (`_make_service`) rather than at the HTTP boundary.
+This keeps MCP tests focused on serialization, error dict mapping, and tool signatures
+without coupling them to URL patterns. HTTP-level testing belongs in `test_client.py`.
 
 ```python
 """Tests for MCP tools."""
 
 import pytest
-import respx
-import httpx
+from unittest.mock import AsyncMock, patch
 from fastmcp import Client
 from myapi_tools.mcp_server import mcp
+from myapi_tools.models import Item
+from myapi_tools.errors import AuthenticationError, RateLimitError
 
 @pytest.fixture
 def mcp_client():
     """In-process MCP test client."""
     return Client(mcp)
 
-@respx.mock
-@pytest.mark.asyncio
-async def test_list_items_tool(mcp_client, mock_items, monkeypatch):
-    """MCP list_items tool returns capped, serialized items."""
-    monkeypatch.setenv("MYAPI_KEY", "test-key")
-    respx.get("https://api.example.com/v1/items").mock(
-        return_value=httpx.Response(200, json=mock_items)
-    )
-    async with mcp_client:
-        result = await mcp_client.call_tool("list_items", {"category": "electronics"})
-    # result is a list of TextContent; parse the JSON from it
+async def test_list_items_tool(mcp_client, mock_items):
+    """MCP list_items tool returns serialized items."""
+    items = [Item.model_validate(i) for i in mock_items["results"]]
+    with patch("myapi_tools.mcp_server._make_service") as mock_svc:
+        mock_svc.return_value.list_items = AsyncMock(return_value=items)
+        async with mcp_client:
+            result = await mcp_client.call_tool("list_items", {"category": "electronics"})
     assert "Widget" in str(result)
 
-@respx.mock
-@pytest.mark.asyncio
-async def test_list_items_auth_error_returns_error_dict(mcp_client, monkeypatch):
+async def test_list_items_auth_error_returns_error_dict(mcp_client):
     """MCP tool returns error dict instead of raising on auth failure."""
-    monkeypatch.setenv("MYAPI_KEY", "bad-key")
-    respx.get("https://api.example.com/v1/items").mock(
-        return_value=httpx.Response(401)
-    )
-    async with mcp_client:
-        result = await mcp_client.call_tool("list_items", {"category": "electronics"})
+    with patch("myapi_tools.mcp_server._make_service") as mock_svc:
+        mock_svc.return_value.list_items = AsyncMock(
+            side_effect=AuthenticationError("Bad key")
+        )
+        async with mcp_client:
+            result = await mcp_client.call_tool("list_items", {"category": "electronics"})
     assert "error" in str(result).lower()
     assert "authentication" in str(result).lower()
 
-@pytest.mark.asyncio
 async def test_all_tools_have_docstrings(mcp_client):
     """Every MCP tool must have a docstring (it becomes the LLM description)."""
     async with mcp_client:
@@ -1462,6 +1646,10 @@ async def test_all_tools_have_docstrings(mcp_client):
     for tool in tools:
         assert tool.description, f"Tool '{tool.name}' is missing a docstring"
 ```
+
+Note: the tests above omit `@pytest.mark.asyncio` because we recommend setting
+`asyncio_mode = "auto"` in `pyproject.toml` (see Testing Strategy below), which
+applies the marker to all async test functions automatically.
 
 ### `tests/test_cli.py` — CLI Tests
 
@@ -1528,13 +1716,16 @@ def test_rate_limit_exits_with_code_2(runner, monkeypatch):
 
 ### Testing Principles
 
-- **Mock at the HTTP boundary** (`respx`), not at the service layer — this tests the full
-  stack from tool/command → service → client → (mocked) HTTP.
+- **Two-tier mocking strategy**: Use `respx` (HTTP-level mocking) for `test_client.py` to
+  verify the full HTTP → exception mapping stack. For MCP and CLI tests, mock at the service
+  factory level (`_make_service()` for MCP, `IntervalsService` constructor for CLI) — this
+  is simpler, avoids coupling MCP/CLI tests to HTTP URL details, and keeps those test files
+  focused on their own responsibilities (serialization, error handling, output formatting).
 - **Test error paths explicitly** — the LLM relies on structured error output to decide
   what to do next (retry, change params, report to user).
 - **Test MCP docstrings exist** — a missing docstring means the LLM gets no tool
   description, which silently breaks discoverability.
 - **Test CLI exit codes** — they're part of the contract with the calling LLM agent.
-- **No real API calls in CI** — all tests use `respx` mocks. For integration tests
+- **No real API calls in CI** — all tests use mocks. For integration tests
   against the real API, use a separate `pytest.ini` marker:
   `pytest -m integration` (and mark those tests with `@pytest.mark.integration`).
